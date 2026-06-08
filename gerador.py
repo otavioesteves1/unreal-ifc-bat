@@ -14,6 +14,7 @@ import os
 import json
 import subprocess
 import ctypes
+import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from datetime import datetime
@@ -210,12 +211,12 @@ def main():
     root = tk.Tk()
     root.title("Gerador de Batch — Importador IFC")
     root.resizable(True, True)
-    root.attributes("-topmost", True)
     root.minsize(720, 520)
 
     root.update_idletasks()
     W, H = 820, 600
     root.geometry(f"{W}x{H}+{(root.winfo_screenwidth()-W)//2}+{(root.winfo_screenheight()-H)//2}")
+    # NOTA: -topmost removido — causava messagebox aparecer atrás da janela principal
 
     # ── estilo ttk ───────────────────────────────────────────────────────────
     style = ttk.Style(root)
@@ -368,15 +369,24 @@ def main():
 
     def atualizar_levels(*_):
         p = var_projeto.get().strip()
-        if p and os.path.isfile(p):
+        if not p or not os.path.isfile(p):
+            return
+        lbl_lvl_status.config(text="Escaneando levels...", fg="#888888")
+
+        def scan():
             lvls = listar_levels_disco(p)
-            combo_lvl["values"] = lvls
-            if lvls:
-                if not var_level.get() or var_level.get() not in lvls:
-                    var_level.set(lvls[0])
-                lbl_lvl_status.config(text=f"{len(lvls)} level(s) encontrado(s)", fg=COR_OK)
-            else:
-                lbl_lvl_status.config(text="Nenhum level encontrado", fg=COR_ERR)
+            def update():
+                combo_lvl["values"] = lvls
+                if lvls:
+                    if not var_level.get() or var_level.get() not in lvls:
+                        var_level.set(lvls[0])
+                    lbl_lvl_status.config(text=f"{len(lvls)} level(s) encontrado(s)", fg=COR_OK)
+                else:
+                    lbl_lvl_status.config(text="Nenhum level encontrado", fg=COR_ERR)
+            root.after(0, update)
+
+        threading.Thread(target=scan, daemon=True).start()
+
     var_projeto.trace_add("write", atualizar_levels)
 
     # ════════════════════════════════════════════════════════════════════════
@@ -428,18 +438,25 @@ def main():
         lbl_prev.pack(fill="x", padx=(64,0), pady=(0,2))
 
         def atualizar_preview(*_):
-            ifcs = listar_ifcs(var.get().strip())
-            if not ifcs:
-                lbl_prev.config(
-                    text="  Nenhum .ifc encontrado" if var.get().strip() else "",
-                    fg=COR_ERR if var.get().strip() else "#888888")
-            else:
-                exemplo = ", ".join(ifcs[:3])
-                if len(ifcs) > 3:
-                    exemplo += f"  ... (+{len(ifcs)-3})"
-                lbl_prev.config(
-                    text=f"  {len(ifcs)} arquivo(s):  {exemplo}",
-                    fg=COR_OK)
+            caminho = var.get().strip()
+
+            def scan():
+                ifcs = listar_ifcs(caminho)
+                def update():
+                    if not ifcs:
+                        lbl_prev.config(
+                            text="  Nenhum .ifc encontrado" if caminho else "",
+                            fg=COR_ERR if caminho else "#888888")
+                    else:
+                        exemplo = ", ".join(ifcs[:3])
+                        if len(ifcs) > 3:
+                            exemplo += f"  ... (+{len(ifcs)-3})"
+                        lbl_prev.config(
+                            text=f"  {len(ifcs)} arquivo(s):  {exemplo}",
+                            fg=COR_OK)
+                root.after(0, update)
+
+            threading.Thread(target=scan, daemon=True).start()
 
         var.trace_add("write", atualizar_preview)
         if valor:
