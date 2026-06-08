@@ -21,6 +21,19 @@ RESULT_PATH     = os.path.join(SCRIPTS_DIR, "result.json")
 FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS = 0x00400000
 
 
+def get_short_path(path):
+    """Converte para caminho curto 8.3 do Windows (sem acentos) — seguro para passar ao Unreal via CLI."""
+    if not path:
+        return path
+    try:
+        buf = ctypes.create_unicode_buffer(32768)
+        if ctypes.windll.kernel32.GetShortPathNameW(str(path), buf, len(buf)):
+            return buf.value
+    except Exception:
+        pass
+    return path
+
+
 def log(msg=""):
     print(msg, flush=True)
 
@@ -248,7 +261,7 @@ def main():
     subprocess.run([
         unreal, projeto,
         "-run=PythonScript",
-        f"-Script={HEADLESS_SCRIPT}",
+        f"-Script={get_short_path(HEADLESS_SCRIPT)}",
         "-unattended",
         "-nullrhi",
         "-nopause",

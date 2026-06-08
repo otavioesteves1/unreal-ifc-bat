@@ -13,6 +13,7 @@ Melhorias v2:
 import os
 import json
 import subprocess
+import ctypes
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from datetime import datetime
@@ -34,6 +35,19 @@ COR_HEAD  = "#1e1e1e"
 COR_BTN   = "#0078d4"
 COR_GERAR = "#107C10"
 COR_GRAY  = "#d0d0d0"
+
+
+def get_short_path(path):
+    """Converte para caminho curto 8.3 do Windows (sem acentos) — seguro para .bat e CMD."""
+    if not path:
+        return path
+    try:
+        buf = ctypes.create_unicode_buffer(32768)
+        if ctypes.windll.kernel32.GetShortPathNameW(str(path), buf, len(buf)):
+            return buf.value
+    except Exception:
+        pass
+    return path
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -111,11 +125,16 @@ def gerar_bat(config):
     pastas  = config.get("pastas", [])
     filtros = config.get("filtros", [])
     data    = datetime.now().strftime("%Y-%m-%d %H:%M")
-    runner  = os.path.join(SCRIPTS_DIR, "runner.py")
+    runner    = get_short_path(os.path.join(SCRIPTS_DIR, "runner.py"))
+
+    # Caminhos curtos 8.3 — evitam problemas de encoding do CMD com acentos
+    unreal_s  = get_short_path(config["unreal"])
+    projeto_s = get_short_path(config["projeto"])
+    pastas_s  = [get_short_path(p) for p in pastas]
 
     linhas_pastas = []
-    for i in range(1, max(len(pastas) + 1, 6)):
-        val = pastas[i-1] if i <= len(pastas) else ""
+    for i in range(1, max(len(pastas_s) + 1, 6)):
+        val = pastas_s[i-1] if i <= len(pastas_s) else ""
         linhas_pastas.append(f"set IFC_PASTA_{i}={val}")
     linhas_pastas.append("REM  Para mais pastas: adicione set IFC_PASTA_6=...  IFC_PASTA_7=... etc.")
 
@@ -134,8 +153,8 @@ REM
 REM ================================================================
 
 set IFC_NOME={nome}
-set IFC_UNREAL={config['unreal']}
-set IFC_PROJETO={config['projeto']}
+set IFC_UNREAL={unreal_s}
+set IFC_PROJETO={projeto_s}
 set IFC_CONTENT_BASE={config['content_base']}
 set IFC_LEVEL={config['level']}
 
@@ -169,14 +188,16 @@ pause
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def agendar_windows(config, bat_path):
-    nome   = config["nome"]
-    dia_pt = config.get("agenda_dia",  "Quinta-feira")
-    hora   = config.get("agenda_hora", "01:00")
-    dia_en = DIAS_EN.get(dia_pt, "THU")
-    task   = f"IFC_Import_{nome}"
-    log    = os.path.join(PROJETOS_DIR, f"{nome}.log")
-    tr     = f'cmd /c "\\"{bat_path}\\" > \\"{log}\\" 2>&1"'
-    cmd    = f'schtasks /create /tn "{task}" /tr "{tr}" /sc WEEKLY /d {dia_en} /st {hora} /f /rl HIGHEST'
+    nome     = config["nome"]
+    dia_pt   = config.get("agenda_dia",  "Quinta-feira")
+    hora     = config.get("agenda_hora", "01:00")
+    dia_en   = DIAS_EN.get(dia_pt, "THU")
+    task     = f"IFC_Import_{nome}"
+    bat_s    = get_short_path(bat_path)
+    proj_s   = get_short_path(PROJETOS_DIR)
+    log      = os.path.join(proj_s, f"{nome}.log")
+    tr       = f'cmd /c "\\"{bat_s}\\" > \\"{log}\\" 2>&1"'
+    cmd      = f'schtasks /create /tn "{task}" /tr "{tr}" /sc WEEKLY /d {dia_en} /st {hora} /f /rl HIGHEST'
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
     return result.returncode == 0, task, (result.stdout + result.stderr).strip()
 
