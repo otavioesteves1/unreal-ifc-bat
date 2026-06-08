@@ -8,10 +8,12 @@ import unreal
 import os
 import json
 import re
+import time
 
-SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_PATH = os.path.join(SCRIPTS_DIR, "config.json")
-RESULT_PATH = os.path.join(SCRIPTS_DIR, "result.json")
+SCRIPTS_DIR   = os.path.dirname(os.path.abspath(__file__))
+CONFIG_PATH   = os.path.join(SCRIPTS_DIR, "config.json")
+RESULT_PATH   = os.path.join(SCRIPTS_DIR, "result.json")
+PROGRESS_PATH = os.path.join(SCRIPTS_DIR, "progress.json")
 
 # ── parse de nome (mesmo do script principal) ─────────────────────────────────
 _AVEVA = re.compile(r"^U-([^-]+)-([^_]+)_ET4\.ifc$", re.IGNORECASE)
@@ -38,6 +40,22 @@ def limpar_assets_existentes(dest_path, ifc_filename):
     if unreal.EditorAssetLibrary.does_directory_exist(subdir):
         unreal.log(f"[IFC] Substituindo existente: {scene_name}")
         unreal.EditorAssetLibrary.delete_directory(subdir)
+
+
+def escrever_progresso(atual, total, arquivo, inicio, ok, falhou):
+    """Grava progresso em progress.json para o runner.py exibir em tempo real."""
+    try:
+        with open(PROGRESS_PATH, "w", encoding="utf-8") as f:
+            json.dump({
+                "current":      atual,
+                "total":        total,
+                "current_file": arquivo,
+                "started_at":   inicio,
+                "ok":           ok,
+                "falhou":       falhou,
+            }, f)
+    except Exception:
+        pass
 
 
 def import_ifc(ifc_path, dest_path):
@@ -98,20 +116,32 @@ def main():
 
     # ── 3. Importar ─────────────────────────────────────────────────────────
     ok, falhou = 0, 0
+    erros      = []
+    total      = len(ifc_files)
+    inicio_imp = time.time()
 
-    with unreal.ScopedSlowTask(len(ifc_files), "Importando IFCs...") as slow:
+    with unreal.ScopedSlowTask(total, "Importando IFCs...") as slow:
         slow.make_dialog(False)   # False = sem botao cancelar em modo headless
-        for ifc_path in ifc_files:
+        for i, ifc_path in enumerate(ifc_files, start=1):
             filename = os.path.basename(ifc_path)
             slow.enter_progress_frame(1, filename)
+
+            # Sinaliza para o runner: iniciando arquivo i
+            escrever_progresso(i - 1, total, ifc_path, inicio_imp, ok, falhou)
+
             site, discipline = parse_filename(filename)
             dest = f"{content_base}/{site}/{discipline}"
             ensure_content_path(dest)
             limpar_assets_existentes(dest, filename)
+
             if import_ifc(ifc_path, dest):
                 ok += 1
             else:
                 falhou += 1
+                erros.append(filename)
+
+            # Sinaliza para o runner: arquivo i concluido
+            escrever_progresso(i, total, ifc_path, inicio_imp, ok, falhou)
 
     # ── 4. Salvar tudo ──────────────────────────────────────────────────────
     unreal.log("[Headless] Salvando...")
@@ -120,15 +150,17 @@ def main():
     # ── 5. Escrever result.json para o runner saber o resultado ─────────────
     try:
         with open(RESULT_PATH, "w", encoding="utf-8") as f:
-            json.dump({"ok": ok, "falhou": falhou}, f)
+            json.dump({"ok": ok, "falhou": falhou, "erros": erros}, f)
     except Exception as e:
         unreal.log_warning(f"[Headless] Nao foi possivel escrever result.json: {e}")
 
-    # ── 6. Limpar config ────────────────────────────────────────────────────
-    try:
-        os.remove(CONFIG_PATH)
-    except Exception:
-        pass
+    # ── 6. Limpar arquivos temporarios ──────────────────────────────────────
+    for p in (CONFIG_PATH, PROGRESS_PATH):
+        try:
+            if os.path.exists(p):
+                os.remove(p)
+        except Exception:
+            pass
 
     unreal.log(
         f"\n[Headless] CONCLUIDO — Importados: {ok}  Falhas: {falhou}\n"
