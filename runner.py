@@ -346,13 +346,13 @@ def main():
     subprocess.run([
         unreal, projeto,
         "-run=PythonScript",
-        f"-Script={get_short_path(HEADLESS_SCRIPT).replace(chr(92), '/')}",
         "-unattended",
         "-nullrhi",
         "-nopause",
         "-nosplash",
         "-NoSound",
         "-log",
+        f"-Script={get_short_path(HEADLESS_SCRIPT).replace(chr(92), '/')}",
     ])
 
     parar.set()

@@ -129,7 +129,10 @@ def gerar_bat(config):
     runner    = get_short_path(os.path.join(SCRIPTS_DIR, "runner.py"))
 
     # Caminhos curtos 8.3 — evitam problemas de encoding do CMD com acentos
-    unreal_s  = get_short_path(config["unreal"])
+    # NOTA: Unreal exe fica em C:\Program Files\... (sem acentos), nao usa short path
+    # pois get_short_path pode retornar UNREAL~4.EXE (exe errado) se houver varios
+    # executaveis UNREAL*.EXE na mesma pasta (UnrealEditor-Cmd.exe, UnrealFrontend.exe, etc.)
+    unreal_s  = config["unreal"]
     projeto_s = get_short_path(config["projeto"])
     pastas_s  = [get_short_path(p) for p in pastas]
 
