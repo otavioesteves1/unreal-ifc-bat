@@ -35,6 +35,27 @@ def get_short_path(path):
     return path
 
 
+def get_long_path(path):
+    """Converte um caminho 8.3 curto de volta ao caminho longo Unicode.
+
+    O .bat passa caminhos curtos (ex.: MEUPRO~1.UPR) porque o CMD le em
+    codepage OEM e nao lida com acentos. Mas o Unreal, ao receber o projeto
+    como nome 8.3 (extensao .uproject truncada para .UPR), NAO aplica a lista
+    de plugins habilitados do .uproject — entao DatasmithImporter nao carrega.
+    Como o subprocess.run usa a API Unicode (CreateProcessW), podemos passar o
+    caminho longo completo (com acentos) sem o problema de codepage do CMD.
+    """
+    if not path:
+        return path
+    try:
+        buf = ctypes.create_unicode_buffer(32768)
+        if ctypes.windll.kernel32.GetLongPathNameW(str(path), buf, len(buf)):
+            return buf.value
+    except Exception:
+        pass
+    return path
+
+
 def _make_script_arg(path):
     """Retorna o caminho do script em formato seguro para -Script= do Unreal.
 
@@ -207,7 +228,7 @@ def main():
     # ── Ler configuracao das variaveis de ambiente ────────────────────────────
     nome         = os.environ.get("IFC_NOME",         "batch")
     unreal       = os.environ.get("IFC_UNREAL",       "")
-    projeto      = os.environ.get("IFC_PROJETO",      "")
+    projeto      = get_long_path(os.environ.get("IFC_PROJETO", ""))
     content_base = os.environ.get("IFC_CONTENT_BASE", "/Game/IFC")
     level        = os.environ.get("IFC_LEVEL",        "")
     filtros_str  = os.environ.get("IFC_FILTROS",      "")
