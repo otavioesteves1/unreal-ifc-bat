@@ -35,6 +35,21 @@ def get_short_path(path):
     return path
 
 
+def _make_script_arg(path):
+    """Retorna o caminho do script em formato seguro para -Script= do Unreal.
+
+    GetShortPathNameW devolve extensao em MAIUSCULO (.PY).
+    O commandlet do Unreal so reconhece arquivo se terminar em .py minusculo;
+    caso contrario trata o valor como codigo Python inline e falha com
+    SyntaxError ao tentar avaliar o caminho como expressao.
+    """
+    short = get_short_path(path)
+    # Forcando extensao minuscula (.PY -> .py)
+    if short.upper().endswith('.PY') and not short.endswith('.py'):
+        short = short[:-3] + '.py'
+    return short.replace(chr(92), '/')
+
+
 def log(msg=""):
     print(msg, flush=True)
 
@@ -352,7 +367,7 @@ def main():
         "-nosplash",
         "-NoSound",
         "-log",
-        f"-Script={get_short_path(HEADLESS_SCRIPT).replace(chr(92), '/')}",
+        f"-Script={_make_script_arg(HEADLESS_SCRIPT)}",
     ])
 
     parar.set()
