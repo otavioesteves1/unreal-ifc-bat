@@ -8,6 +8,7 @@ e roda o Unreal headless.
 import os
 import sys
 import json
+import shutil
 import subprocess
 import ctypes
 import threading
@@ -134,6 +135,62 @@ def baixar_em_paralelo(arquivos_nuvem, max_paralelo=3):
     for t in threads:
         t.join()
     return resultados
+
+
+# ── Staging local ───────────────────────────────────────────────────────────────
+
+def preparar_pasta_local(ifc_origem, projeto):
+    """Copia os IFCs de origem (rede/OneDrive) para uma pasta LOCAL dentro do
+    projeto, nomeada com a data (YYYYMMDD). Retorna a lista de caminhos copiados.
+
+    Motivo: importar a partir da rede trava o Datasmith. Trazendo os arquivos
+    para dentro do projeto antes, a importacao toca apenas disco local.
+
+    Cada execucao LIMPA toda a area de staging (remove datas antigas) e recria a
+    pasta do dia — sempre sobrepoe, a pasta antiga e apagada para receber a nova.
+    """
+    projeto_dir  = os.path.dirname(projeto)
+    staging_root = os.path.join(projeto_dir, "IFC_Source")
+    data         = time.strftime("%Y%m%d")
+    staging_dir  = os.path.join(staging_root, data)
+
+    # Limpa a area de staging inteira (remove a pasta antiga) antes de copiar
+    if os.path.isdir(staging_root):
+        try:
+            shutil.rmtree(staging_root)
+        except Exception as e:
+            log(f"  [!] Nao foi possivel limpar staging antigo: {e}")
+    try:
+        os.makedirs(staging_dir, exist_ok=True)
+    except Exception as e:
+        log(f"  [ERRO] Nao foi possivel criar a pasta de staging: {e}")
+        return []
+
+    log("  Copiando IFCs para a pasta local do projeto:")
+    log(f"    {staging_dir}")
+    log()
+
+    locais = []
+    vistos = {}                       # basename -> origem (deteccao de colisao)
+    total  = len(ifc_origem)
+    for i, src in enumerate(ifc_origem, start=1):
+        nome = os.path.basename(src)
+        dst  = os.path.join(staging_dir, nome)
+        if nome.lower() in vistos:
+            log(f"  [!] Nome repetido ignorado: {nome}  (ja copiado de {vistos[nome.lower()]})")
+            continue
+        try:
+            mb = tamanho_mb(src)
+            log(f"  [{i}/{total}] {nome}  ({mb:.1f} MB)...")
+            shutil.copy2(src, dst)    # sobrepoe se ja existir
+            vistos[nome.lower()] = os.path.dirname(src)
+            locais.append(dst)
+        except Exception as e:
+            log(f"    [!] Falha ao copiar {nome}: {e}")
+    log()
+    log(f"  Copiados : {len(locais)}/{total} arquivo(s) para o projeto")
+    log()
+    return locais
 
 
 # ── Progresso ─────────────────────────────────────────────────────────────────
@@ -346,6 +403,14 @@ def main():
 
     if not ifc_locais:
         log("  Nenhum arquivo disponivel para importar. Encerrando.")
+        input("\n  Pressione Enter para sair...")
+        return
+
+    # ── Copiar IFCs para pasta local do projeto (evita usar a rede no import) ──
+    ifc_locais = preparar_pasta_local(ifc_locais, projeto)
+
+    if not ifc_locais:
+        log("  Nenhum arquivo pode ser copiado para o projeto. Encerrando.")
         input("\n  Pressione Enter para sair...")
         return
 

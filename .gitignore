@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+
+# Arquivos temporarios gerados em runtime
+config.json
+result.json
+progress.json
