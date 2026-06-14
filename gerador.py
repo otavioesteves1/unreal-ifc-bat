@@ -73,6 +73,14 @@ def get_long_path(path):
     return path
 
 
+def is_admin():
+    """True se o processo estiver rodando como Administrador (necessario p/ agendar)."""
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 #  UTILITARIOS
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -238,7 +246,8 @@ def agendar_windows(config, bat_path):
 
 def main():
     root = tk.Tk()
-    root.title("Gerador de Batch — Importador IFC")
+    root.title("Gerador de Batch — Importador IFC"
+               + ("   [Administrador]" if is_admin() else ""))
     root.resizable(True, True)
     root.minsize(720, 540)
 
@@ -317,9 +326,10 @@ def main():
                     f"Tarefa agendada:\n  {task}\n"
                     f"  {cfg['agenda_dia']} as {cfg['agenda_hora']}", parent=root)
             else:
+                extra = ("\n\nDica: feche e abra com 'Gerador-Admin.bat' (duplo-clique) "
+                         "para rodar como Administrador e poder agendar.") if not is_admin() else ""
                 messagebox.showwarning("Batch gerado — Agendamento falhou",
-                    f"Batch: {bat}\n\nErro:\n{msg}\n\n"
-                    "Execute o gerador como Administrador para agendar.", parent=root)
+                    f"Batch: {bat}\n\nErro:\n{msg}{extra}", parent=root)
         else:
             messagebox.showinfo("Batch gerado!",
                 f"Arquivo criado:\n{bat}", parent=root)
@@ -645,6 +655,17 @@ def main():
     tk.Checkbutton(t4, text="Agendar automaticamente ao gerar o .bat",
                    variable=var_agendar, font=("Arial",10),
                    bg="white").pack(anchor="w", padx=20)
+
+    if is_admin():
+        st_txt = "Rodando como Administrador — o agendamento esta disponivel."
+        st_cor = COR_OK
+    else:
+        st_txt = ("NAO esta como Administrador. O agendamento vai falhar.\n"
+                  "Para agendar: feche e abra com 'Gerador-Admin.bat' (duplo-clique)\n"
+                  "ou clique-direito no gerador > Executar como administrador.")
+        st_cor = COR_ERR
+    tk.Label(t4, text=st_txt, font=("Arial",9,"bold"), fg=st_cor, bg="white",
+             justify="left").pack(anchor="w", padx=20, pady=(4,0))
 
     frame_ag = tk.Frame(t4, bg="white")
     frame_ag.pack(anchor="w", padx=40, pady=10)
