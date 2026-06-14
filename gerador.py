@@ -1,13 +1,17 @@
 """
-gerador.py — Gerador de Batch para Importacao IFC  (v2)
-Interface em abas — sem scroll, mais compacta e clara.
+gerador.py — Gerador de Batch para Importacao IFC  (v3)
+Interface em abas.
 
-Melhorias v2:
-  - Layout em abas (Projeto / Pastas / Filtros / Agendamento)
-  - Preview de arquivos .ifc ao selecionar pasta
-  - Botao para abrir pasta no Explorer
-  - Filtros dinamicos (igual pastas: add/remove)
-  - Carregar .bat existente para edicao
+Melhorias v3:
+  - Todos os dialogos de arquivo/pasta usam parent=root (antes abriam ATRAS da
+    janela e travavam a interface com grab modal — "carregar .bat nao funciona").
+  - Ao carregar um .bat, os caminhos 8.3 curtos sao resolvidos de volta para o
+    caminho longo legivel (get_long_path).
+  - Aba "Pastas IFC" redesenhada:
+      * sem bind_all de mousewheel (causava "scroll estranho" global);
+      * lista unica (Treeview) com rolagem nativa mostrando cada pasta e os
+        .ifc que serao carregados, com total geral;
+      * varredura unica, em background e com debounce (nao trava ao digitar).
 """
 
 import os
@@ -45,6 +49,24 @@ def get_short_path(path):
     try:
         buf = ctypes.create_unicode_buffer(32768)
         if ctypes.windll.kernel32.GetShortPathNameW(str(path), buf, len(buf)):
+            return buf.value
+    except Exception:
+        pass
+    return path
+
+
+def get_long_path(path):
+    """Converte um caminho 8.3 curto de volta ao caminho longo Unicode legivel.
+
+    Usado ao carregar um .bat (que guarda caminhos curtos) para mostrar caminhos
+    legiveis no formulario. Se o caminho nao existir nesta maquina, GetLongPathNameW
+    falha e devolvemos o valor original.
+    """
+    if not path:
+        return path
+    try:
+        buf = ctypes.create_unicode_buffer(32768)
+        if ctypes.windll.kernel32.GetLongPathNameW(str(path), buf, len(buf)):
             return buf.value
     except Exception:
         pass
@@ -99,17 +121,21 @@ def parsear_bat(bat_path):
                 if "=" not in kv:
                     continue
                 key, val = kv.split("=", 1)
-                key = key.upper()
-                if   key == "IFC_NOME":         config["nome"]         = val
+                key = key.strip().upper()
+                val = val.strip()
+                if   key == "IFC_NOME":          config["nome"]         = val
                 elif key == "IFC_UNREAL":        config["unreal"]       = val
                 elif key == "IFC_PROJETO":       config["projeto"]      = val
                 elif key == "IFC_CONTENT_BASE":  config["content_base"] = val
                 elif key == "IFC_LEVEL":         config["level"]        = val
                 elif key == "IFC_FILTROS":
                     config["filtros"] = [f.strip() for f in val.split(",") if f.strip()]
-                elif key.startswith("IFC_PASTA_") and val.strip():
-                    idx = int(key.replace("IFC_PASTA_",""))
-                    pastas_tmp[idx] = val.strip()
+                elif key.startswith("IFC_PASTA_") and val:
+                    try:
+                        idx = int(key.replace("IFC_PASTA_",""))
+                        pastas_tmp[idx] = val
+                    except ValueError:
+                        pass
     except Exception as e:
         messagebox.showerror("Erro", f"Nao foi possivel ler o .bat:\n{e}")
         return None
@@ -214,12 +240,24 @@ def main():
     root = tk.Tk()
     root.title("Gerador de Batch — Importador IFC")
     root.resizable(True, True)
-    root.minsize(720, 520)
+    root.minsize(720, 540)
 
     root.update_idletasks()
-    W, H = 820, 600
+    W, H = 840, 640
     root.geometry(f"{W}x{H}+{(root.winfo_screenwidth()-W)//2}+{(root.winfo_screenheight()-H)//2}")
-    # NOTA: -topmost removido — causava messagebox aparecer atrás da janela principal
+
+    def dialog_open(func, **kw):
+        """Abre um dialogo SEMPRE em frente da janela (parent=root) e devolve foco.
+
+        Sem isso, os dialogos do tkinter abrem ATRAS da janela principal e com
+        grab modal, deixando a interface aparentemente travada.
+        """
+        kw.setdefault("parent", root)
+        root.lift()
+        res = func(**kw)
+        root.lift()
+        root.focus_force()
+        return res
 
     # ── estilo ttk ───────────────────────────────────────────────────────────
     style = ttk.Style(root)
@@ -233,6 +271,7 @@ def main():
     style.configure("TFrame",           background="#ffffff")
     style.configure("TLabel",           background="#ffffff", font=("Arial",9))
     style.configure("TCombobox",        font=("Arial",9))
+    style.configure("Lista.Treeview",   font=("Consolas",9), rowheight=20)
 
     # ── header ───────────────────────────────────────────────────────────────
     header = tk.Frame(root, bg=COR_HEAD, height=48)
@@ -243,7 +282,8 @@ def main():
              font=("Arial", 12, "bold")).pack(side="left", pady=10)
 
     def on_carregar_bat():
-        p = filedialog.askopenfilename(
+        p = dialog_open(
+            filedialog.askopenfilename,
             initialdir=PROJETOS_DIR,
             title="Selecionar .bat para editar",
             filetypes=[("Batch files","*.bat"),("Todos","*.*")])
@@ -311,14 +351,6 @@ def main():
                  fg="#333333").grid(row=row, column=col, sticky=sticky,
                                     padx=(16,4), pady=pady)
 
-    def entrada(parent, row, default="", col=1, width=52):
-        var = tk.StringVar(value=default)
-        tk.Entry(parent, textvariable=var, font=("Arial",9),
-                 width=width, relief="solid", bd=1
-                 ).grid(row=row, column=col, columnspan=2, sticky="ew",
-                        padx=(0,16), pady=4)
-        return var
-
     def botao_browse(parent, row, col, command, texto="..."):
         tk.Button(parent, text=texto, command=command, width=3,
                   relief="flat", bg=COR_GRAY, font=("Arial",9)
@@ -343,7 +375,8 @@ def main():
     tk.Entry(t1, textvariable=var_unreal, font=("Arial",9),
              relief="solid", bd=1).grid(row=3, column=1, sticky="ew", padx=(0,4), pady=4)
     def browse_unreal():
-        p = filedialog.askopenfilename(filetypes=[("Executavel","*.exe"),("Todos","*.*")])
+        p = dialog_open(filedialog.askopenfilename,
+                        filetypes=[("Executavel","*.exe"),("Todos","*.*")])
         if p: var_unreal.set(p.replace("/","\\"))
     botao_browse(t1, 3, 2, browse_unreal)
 
@@ -352,7 +385,8 @@ def main():
     tk.Entry(t1, textvariable=var_projeto, font=("Arial",9),
              relief="solid", bd=1).grid(row=4, column=1, sticky="ew", padx=(0,4), pady=4)
     def browse_projeto():
-        p = filedialog.askopenfilename(filetypes=[("Unreal Project","*.uproject"),("Todos","*.*")])
+        p = dialog_open(filedialog.askopenfilename,
+                        filetypes=[("Unreal Project","*.uproject"),("Todos","*.*")])
         if p: var_projeto.set(p.replace("/","\\"))
     botao_browse(t1, 4, 2, browse_projeto)
 
@@ -375,13 +409,16 @@ def main():
         if not p or not os.path.isfile(p):
             return
         lbl_lvl_status.config(text="Escaneando levels...", fg="#888888")
+        nivel_desejado = var_level.get().strip()
 
         def scan():
             lvls = listar_levels_disco(p)
             def update():
                 combo_lvl["values"] = lvls
                 if lvls:
-                    if not var_level.get() or var_level.get() not in lvls:
+                    if nivel_desejado and nivel_desejado in lvls:
+                        var_level.set(nivel_desejado)
+                    elif not var_level.get() or var_level.get() not in lvls:
                         var_level.set(lvls[0])
                     lbl_lvl_status.config(text=f"{len(lvls)} level(s) encontrado(s)", fg=COR_OK)
                 else:
@@ -393,80 +430,96 @@ def main():
     var_projeto.trace_add("write", atualizar_levels)
 
     # ════════════════════════════════════════════════════════════════════════
-    # ABA 2 — PASTAS IFC
+    # ABA 2 — PASTAS IFC  (redesenhada)
     # ════════════════════════════════════════════════════════════════════════
     t2 = tab("Pastas IFC")
     t2.configure(style="TFrame")
 
-    tk.Label(t2, text="  Cada pasta e varrida na raiz (sem subpastas).",
+    tk.Label(t2, text="  Pastas onde buscar os arquivos .ifc  (cada pasta e varrida apenas na raiz).",
              font=("Arial",9), fg="#555555", bg="white"
-             ).pack(anchor="w", padx=16, pady=(10,4))
+             ).pack(anchor="w", padx=16, pady=(10,6))
 
-    # scrollable area para as linhas de pasta
-    canvas2  = tk.Canvas(t2, bg="white", highlightthickness=0)
-    vsb2     = ttk.Scrollbar(t2, orient="vertical", command=canvas2.yview)
-    frame_p  = tk.Frame(canvas2, bg="white")
-    frame_p.bind("<Configure>",
-                 lambda e: canvas2.configure(scrollregion=canvas2.bbox("all")))
-    canvas2.create_window((0,0), window=frame_p, anchor="nw")
-    canvas2.configure(yscrollcommand=vsb2.set)
-    canvas2.pack(side="top", fill="both", expand=True, padx=0, pady=0)
-    vsb2.pack(side="right", fill="y")
-    canvas2.bind_all("<MouseWheel>",
-                     lambda e: canvas2.yview_scroll(int(-1*(e.delta/120)), "units"))
+    # ── linhas de pasta (area compacta, sem canvas/scroll global) ─────────────
+    frame_p = tk.Frame(t2, bg="white")
+    frame_p.pack(fill="x", padx=16)
 
-    pastas_vars = []
+    pastas_rows = []   # cada item: {"var", "row", "lbl_num", "lbl_count"}
+
+    _scan_after = {"id": None}
+
+    def agendar_scan(*_):
+        # debounce: so varre 500ms apos a ultima alteracao (nao trava ao digitar)
+        if _scan_after["id"]:
+            try:
+                root.after_cancel(_scan_after["id"])
+            except Exception:
+                pass
+        _scan_after["id"] = root.after(500, reconstruir_lista)
+
+    def reconstruir_lista(*_):
+        _scan_after["id"] = None
+        # snapshot das pastas (var + label de contagem) para varrer em background
+        alvos = [(d["var"].get().strip(), d["lbl_count"]) for d in pastas_rows]
+
+        def scan():
+            resultados = []
+            for caminho, lbl in alvos:
+                ifcs = listar_ifcs(caminho) if caminho else []
+                existe = bool(caminho) and os.path.isdir(caminho)
+                resultados.append((caminho, existe, ifcs, lbl))
+
+            def update():
+                tree.delete(*tree.get_children())
+                total = 0
+                for caminho, existe, ifcs, lbl in resultados:
+                    if not caminho:
+                        lbl.config(text="", fg="#888888")
+                        continue
+                    n = len(ifcs)
+                    total += n
+                    if not existe:
+                        lbl.config(text="pasta nao encontrada", fg=COR_ERR)
+                    else:
+                        lbl.config(text=f"{n} .ifc", fg=COR_OK if n else COR_ERR)
+                    nome = os.path.basename(caminho.rstrip("\\/")) or caminho
+                    if not existe:
+                        cab = f"[X] {nome}   —   pasta nao encontrada   ({caminho})"
+                    else:
+                        cab = f"[{n}] {nome}   ({caminho})"
+                    pid = tree.insert("", "end", text=cab, open=True)
+                    for f in ifcs:
+                        tree.insert(pid, "end", text="   " + f)
+                lbl_total.config(
+                    text=f"Arquivos que serao importados:  {total} no total")
+            root.after(0, update)
+
+        threading.Thread(target=scan, daemon=True).start()
+
+    def renumerar():
+        for i, d in enumerate(pastas_rows, start=1):
+            d["lbl_num"].config(text=f"Pasta {i}:")
 
     def add_pasta_row(valor=""):
-        container = tk.Frame(frame_p, bg="white")
-        container.pack(fill="x", padx=16, pady=(4,0))
+        row = tk.Frame(frame_p, bg="white")
+        row.pack(fill="x", pady=3)
 
-        row_top = tk.Frame(container, bg="white")
-        row_top.pack(fill="x")
-
-        num = len(pastas_vars) + 1
-        tk.Label(row_top, text=f"Pasta {num}:", width=8, anchor="w",
-                 font=("Arial",9), bg="white").pack(side="left")
+        lbl_num = tk.Label(row, text="", width=8, anchor="w",
+                           font=("Arial",9), bg="white")
+        lbl_num.pack(side="left")
 
         var = tk.StringVar(value=valor)
-        pastas_vars.append(var)
+        tk.Entry(row, textvariable=var, font=("Arial",9),
+                 relief="solid", bd=1).pack(side="left", fill="x", expand=True, padx=(0,6))
 
-        entry = tk.Entry(row_top, textvariable=var, font=("Arial",9),
-                         relief="solid", bd=1)
-        entry.pack(side="left", fill="x", expand=True, padx=(0,4))
+        lbl_count = tk.Label(row, text="", width=18, anchor="w",
+                             font=("Arial",8), fg="#888888", bg="white")
+        lbl_count.pack(side="left", padx=(0,4))
 
-        # preview label
-        lbl_prev = tk.Label(container, text="", font=("Arial",8),
-                            fg=COR_OK, bg="white", anchor="w")
-        lbl_prev.pack(fill="x", padx=(64,0), pady=(0,2))
-
-        def atualizar_preview(*_):
-            caminho = var.get().strip()
-
-            def scan():
-                ifcs = listar_ifcs(caminho)
-                def update():
-                    if not ifcs:
-                        lbl_prev.config(
-                            text="  Nenhum .ifc encontrado" if caminho else "",
-                            fg=COR_ERR if caminho else "#888888")
-                    else:
-                        exemplo = ", ".join(ifcs[:3])
-                        if len(ifcs) > 3:
-                            exemplo += f"  ... (+{len(ifcs)-3})"
-                        lbl_prev.config(
-                            text=f"  {len(ifcs)} arquivo(s):  {exemplo}",
-                            fg=COR_OK)
-                root.after(0, update)
-
-            threading.Thread(target=scan, daemon=True).start()
-
-        var.trace_add("write", atualizar_preview)
-        if valor:
-            atualizar_preview()
+        d = {"var": var, "row": row, "lbl_num": lbl_num, "lbl_count": lbl_count}
+        pastas_rows.append(d)
 
         def browse_pasta():
-            p = filedialog.askdirectory()
+            p = dialog_open(filedialog.askdirectory)
             if p:
                 var.set(p.replace("/","\\"))
 
@@ -478,27 +531,56 @@ def main():
                 messagebox.showwarning("Aviso","Pasta nao encontrada.", parent=root)
 
         def remover():
-            if var in pastas_vars:
-                pastas_vars.remove(var)
-            container.destroy()
+            if d in pastas_rows:
+                pastas_rows.remove(d)
+            row.destroy()
+            renumerar()
+            agendar_scan()
 
-        tk.Button(row_top, text="...", command=browse_pasta, width=3,
+        tk.Button(row, text="...", command=browse_pasta, width=3,
                   relief="flat", bg=COR_GRAY).pack(side="left", padx=(0,2))
-        tk.Button(row_top, text="Abrir", command=abrir_pasta, width=5,
+        tk.Button(row, text="Abrir", command=abrir_pasta, width=5,
                   relief="flat", bg="#ddeeff",
                   font=("Arial",8)).pack(side="left", padx=(0,2))
-        tk.Button(row_top, text="X", command=remover, width=3,
+        tk.Button(row, text="X", command=remover, width=3,
                   relief="flat", bg="#ffcccc").pack(side="left")
 
-    for _ in range(3):
-        add_pasta_row()
+        var.trace_add("write", agendar_scan)
+        renumerar()
 
     btn_frame_p = tk.Frame(t2, bg="white")
     btn_frame_p.pack(fill="x", padx=16, pady=8)
     tk.Button(btn_frame_p, text="+ Adicionar pasta",
-              command=add_pasta_row,
+              command=lambda: (add_pasta_row(), agendar_scan()),
               relief="flat", bg=COR_GRAY,
               font=("Arial",9), padx=8, pady=4).pack(side="left")
+    tk.Button(btn_frame_p, text="Atualizar lista",
+              command=reconstruir_lista,
+              relief="flat", bg="#ddeeff",
+              font=("Arial",9), padx=8, pady=4).pack(side="left", padx=(8,0))
+
+    sep2 = tk.Frame(t2, bg="#dddddd", height=1)
+    sep2.pack(fill="x", padx=16, pady=(6,4))
+
+    lbl_total = tk.Label(t2, text="Arquivos que serao importados:  0 no total",
+                         font=("Arial",9,"bold"), fg="#333333", bg="white")
+    lbl_total.pack(anchor="w", padx=16)
+
+    # ── lista (Treeview) com rolagem nativa ───────────────────────────────────
+    tree_frame = tk.Frame(t2, bg="white")
+    tree_frame.pack(fill="both", expand=True, padx=16, pady=(4,10))
+    tree = ttk.Treeview(tree_frame, show="tree", selectmode="none",
+                        style="Lista.Treeview")
+    vsb_tree = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+    tree.configure(yscrollcommand=vsb_tree.set)
+    vsb_tree.pack(side="right", fill="y")
+    tree.pack(side="left", fill="both", expand=True)
+    # rolagem do mouse SO quando o ponteiro esta sobre a arvore (sem bind_all global)
+    tree.bind("<MouseWheel>",
+              lambda e: tree.yview_scroll(int(-1*(e.delta/120)), "units"))
+
+    for _ in range(3):
+        add_pasta_row()
 
     # ════════════════════════════════════════════════════════════════════════
     # ABA 3 — FILTROS
@@ -600,20 +682,24 @@ def main():
     # ════════════════════════════════════════════════════════════════════════
     def popular_formulario(cfg):
         var_nome.set(cfg.get("nome", ""))
-        var_unreal.set(cfg.get("unreal", UNREAL_DEFAULT))
-        var_projeto.set(cfg.get("projeto", ""))
+        var_unreal.set(get_long_path(cfg.get("unreal", UNREAL_DEFAULT)))
         var_content.set(cfg.get("content_base", "/Game/IFC"))
+        # level antes do projeto: o scan disparado pelo projeto vai respeita-lo
         var_level.set(cfg.get("level", ""))
+        var_projeto.set(get_long_path(cfg.get("projeto", "")))
 
         # Limpa e repopula pastas
-        for widget in frame_p.winfo_children():
-            widget.destroy()
-        pastas_vars.clear()
-        for p in cfg.get("pastas", []):
-            add_pasta_row(p)
-        if not cfg.get("pastas"):
+        for d in list(pastas_rows):
+            d["row"].destroy()
+        pastas_rows.clear()
+        pastas = cfg.get("pastas", [])
+        if pastas:
+            for p in pastas:
+                add_pasta_row(get_long_path(p))
+        else:
             for _ in range(3):
                 add_pasta_row()
+        reconstruir_lista()
 
         # Limpa e repopula filtros
         for widget in frame_f.winfo_children():
@@ -651,7 +737,7 @@ def main():
             messagebox.showerror("Erro","Selecione um level.", parent=root)
             nb.select(0); return None
 
-        pastas = [v.get().strip() for v in pastas_vars if v.get().strip()]
+        pastas = [d["var"].get().strip() for d in pastas_rows if d["var"].get().strip()]
         if not pastas:
             messagebox.showerror("Erro","Adicione ao menos 1 pasta de IFCs.", parent=root)
             nb.select(1); return None
