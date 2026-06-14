@@ -222,12 +222,14 @@ def monitorar_progresso(total_esperado, parar):
     idx     = 0
     inicio  = time.time()
     ultima  = ""
+    viu_prog = False   # ja chegamos a ler progress.json ao menos uma vez?
 
     while not parar.is_set():
         try:
             if os.path.exists(PROGRESS_PATH):
                 with open(PROGRESS_PATH, "r", encoding="utf-8") as fh:
                     prog = json.load(fh)
+                viu_prog = True
 
                 atual   = prog.get("current", 0)
                 total   = prog.get("total", total_esperado) or total_esperado
@@ -236,23 +238,40 @@ def monitorar_progresso(total_esperado, parar):
                 elapsed = time.time() - t_ini
                 ok      = prog.get("ok", 0)
                 falhou  = prog.get("falhou", 0)
-                restante = (elapsed / atual * (total - atual)) if atual > 0 else -1
-
-                if len(arquivo) > 34:
-                    arquivo = arquivo[:31] + "..."
+                fase    = prog.get("fase", "importando")
 
                 barra = barra_progresso(atual, total)
-                linha = (
-                    f"  {barra}  {atual}/{total}"
-                    f"  {arquivo:<37}"
-                    f"  {fmt_tempo(elapsed)} / ~{fmt_tempo(restante)}"
-                    f"  ok:{ok} err:{falhou}"
-                )
+
+                # Sem estimativa de tempo restante: a fase de salvamento/build de
+                # malhas (apos importar tudo) e imprevisivel e nao tem progresso
+                # por item, entao qualquer "~restante" seria enganoso. Mostramos
+                # apenas o tempo decorrido.
+                if fase == "salvando":
+                    spin    = spinner[idx % len(spinner)]
+                    idx    += 1
+                    linha = (
+                        f"  {barra}  {atual}/{total}"
+                        f"  {spin} Salvando e processando malhas...   "
+                        f"  {fmt_tempo(elapsed)}"
+                        f"  ok:{ok} err:{falhou}"
+                    )
+                else:
+                    if len(arquivo) > 34:
+                        arquivo = arquivo[:31] + "..."
+                    linha = (
+                        f"  {barra}  {atual}/{total}"
+                        f"  {arquivo:<37}"
+                        f"  {fmt_tempo(elapsed)}"
+                        f"  ok:{ok} err:{falhou}"
+                    )
             else:
                 spin    = spinner[idx % len(spinner)]
                 idx    += 1
                 elapsed = time.time() - inicio
-                linha   = f"  {spin}  Inicializando Unreal Engine...  {fmt_tempo(elapsed)}"
+                if viu_prog:
+                    linha = f"  {spin}  Finalizando...  {fmt_tempo(elapsed)}"
+                else:
+                    linha = f"  {spin}  Inicializando Unreal Engine...  {fmt_tempo(elapsed)}"
 
         except Exception:
             spin    = spinner[idx % len(spinner)]

@@ -42,7 +42,7 @@ def limpar_assets_existentes(dest_path, ifc_filename):
         unreal.EditorAssetLibrary.delete_directory(subdir)
 
 
-def escrever_progresso(atual, total, arquivo, inicio, ok, falhou):
+def escrever_progresso(atual, total, arquivo, inicio, ok, falhou, fase="importando"):
     """Grava progresso em progress.json para o runner.py exibir em tempo real."""
     try:
         with open(PROGRESS_PATH, "w", encoding="utf-8") as f:
@@ -53,6 +53,7 @@ def escrever_progresso(atual, total, arquivo, inicio, ok, falhou):
                 "started_at":   inicio,
                 "ok":           ok,
                 "falhou":       falhou,
+                "fase":         fase,
             }, f)
     except Exception:
         pass
@@ -144,7 +145,10 @@ def main():
             escrever_progresso(i, total, ifc_path, inicio_imp, ok, falhou)
 
     # ── 4. Salvar tudo ──────────────────────────────────────────────────────
+    # Sinaliza fase "salvando" para o runner: aqui o Unreal constroi as malhas
+    # e salva os pacotes — pode levar varios minutos e nao tem progresso por item.
     unreal.log("[Headless] Salvando...")
+    escrever_progresso(total, total, "", inicio_imp, ok, falhou, fase="salvando")
     unreal.EditorLoadingAndSavingUtils.save_dirty_packages(True, True)
 
     # ── 5. Escrever result.json para o runner saber o resultado ─────────────
