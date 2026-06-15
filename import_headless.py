@@ -59,7 +59,7 @@ def escrever_progresso(atual, total, arquivo, inicio, ok, falhou, fase="importan
         pass
 
 
-def import_ifc(ifc_path, dest_path):
+def import_ifc(ifc_path, dest_path, lightmap_uv=False):
     name = os.path.basename(ifc_path)
     try:
         scene = unreal.DatasmithSceneElement.construct_datasmith_scene_from_file(ifc_path)
@@ -67,14 +67,23 @@ def import_ifc(ifc_path, dest_path):
             unreal.log_warning(f"[IFC] retornou None: {name}")
             return False
         try:
-            opts = scene.get_options(unreal.DatasmithImportBaseOptions)
-            if opts:
-                opts.set_editor_property("scene_handling",   unreal.DatasmithImportScene.CURRENT_LEVEL)
-                opts.set_editor_property("include_geometry",  True)
-                opts.set_editor_property("include_material",  True)
-                opts.set_editor_property("include_light",     False)
-                opts.set_editor_property("include_camera",    False)
-                opts.set_editor_property("include_animation", False)
+            # IMPORTANTE: a classe e DatasmithImportOptions (nao ...BaseOptions, que
+            # falha em get_options). base_options e static_mesh_options sao STRUCTS:
+            # precisam ser lidas, alteradas e GRAVADAS de volta.
+            imp  = scene.get_options(unreal.DatasmithImportOptions)
+            base = imp.get_editor_property("base_options")
+            base.set_editor_property("scene_handling",   unreal.DatasmithImportScene.CURRENT_LEVEL)
+            base.set_editor_property("include_geometry",  True)
+            base.set_editor_property("include_material",  True)
+            base.set_editor_property("include_light",     False)
+            base.set_editor_property("include_camera",    False)
+            base.set_editor_property("include_animation", False)
+            # Lightmap UV desligado por padrao: ~2x mais rapido no build, sem impacto
+            # visual com iluminacao dinamica (medido). So ligar se for assar luz estatica.
+            sm = base.get_editor_property("static_mesh_options")
+            sm.set_editor_property("generate_lightmap_u_vs", bool(lightmap_uv))
+            base.set_editor_property("static_mesh_options", sm)
+            imp.set_editor_property("base_options", base)
         except Exception as e:
             unreal.log_warning(f"[IFC] Aviso opcoes: {e}")
         result = scene.import_scene(dest_path)
@@ -101,12 +110,14 @@ def main():
     ifc_files    = config.get("ifc_files", [])
     main_level   = config.get("main_level", "")
     content_base = config.get("content_base", "/Game/IFC")
+    lightmap_uv  = bool(config.get("lightmap_uv", False))
 
     if not ifc_files:
         unreal.log_warning("[Headless] Nenhum arquivo no config.json.")
         return
 
-    unreal.log(f"[Headless] {len(ifc_files)} arquivo(s) — level: {main_level}")
+    unreal.log(f"[Headless] {len(ifc_files)} arquivo(s) — level: {main_level}"
+               f"  (lightmap_uv={lightmap_uv})")
 
     # ── 2. Abrir level ──────────────────────────────────────────────────────
     try:
@@ -135,7 +146,7 @@ def main():
             ensure_content_path(dest)
             limpar_assets_existentes(dest, filename)
 
-            if import_ifc(ifc_path, dest):
+            if import_ifc(ifc_path, dest, lightmap_uv=lightmap_uv):
                 ok += 1
             else:
                 falhou += 1

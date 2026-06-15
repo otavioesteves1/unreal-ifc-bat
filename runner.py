@@ -76,6 +76,35 @@ def log(msg=""):
     print(msg, flush=True)
 
 
+def _interativo():
+    """True se ha um console real (usuario presente). False em execucao
+    agendada/redirecionada, onde input() travaria ou daria EOFError."""
+    try:
+        return bool(sys.stdin) and sys.stdin.isatty()
+    except Exception:
+        return False
+
+
+def pausar(msg="\n  Pressione Enter para sair..."):
+    """Pausa apenas se houver console; em modo agendado nao bloqueia."""
+    if _interativo():
+        try:
+            input(msg)
+        except EOFError:
+            pass
+
+
+def perguntar(msg, default):
+    """Pergunta S/N apenas se interativo; senao devolve o default (modo agendado)."""
+    if not _interativo():
+        log(f"{msg}{default}   (modo automatico)")
+        return default
+    try:
+        return input(msg).strip().lower()
+    except EOFError:
+        return default
+
+
 def is_local(path):
     """Retorna False se o arquivo estiver apenas na nuvem (OneDrive cloud-only)."""
     try:
@@ -308,6 +337,10 @@ def main():
     content_base = os.environ.get("IFC_CONTENT_BASE", "/Game/IFC")
     level        = os.environ.get("IFC_LEVEL",        "")
     filtros_str  = os.environ.get("IFC_FILTROS",      "")
+    # Lightmap UV: desligado por padrao (ganho de ~2x no build; sem impacto visual
+    # com iluminacao dinamica). So ligue se for ASSAR iluminacao estatica.
+    lightmap_uv  = os.environ.get("IFC_LIGHTMAP_UV", "").strip().lower() in (
+                       "1", "true", "s", "sim", "yes", "on")
 
     log(f"  Batch   : {nome}")
     log(f"  Projeto : {os.path.basename(projeto)}")
@@ -329,17 +362,17 @@ def main():
         if not valor or not os.path.isfile(valor):
             log(f"  [ERRO] {campo} nao encontrado: {valor}")
             log(f"         {msg}")
-            input("\n  Pressione Enter para sair...")
+            pausar()
             sys.exit(1)
 
     if not level:
         log("  [ERRO] Level nao configurado. Verifique IFC_LEVEL no .bat")
-        input("\n  Pressione Enter para sair...")
+        pausar()
         sys.exit(1)
 
     if not pastas:
         log("  [ERRO] Nenhuma pasta configurada.")
-        input("\n  Pressione Enter para sair...")
+        pausar()
         sys.exit(1)
 
     # ── Varrer pastas ─────────────────────────────────────────────────────────
@@ -398,7 +431,7 @@ def main():
     if ifc_nuvem:
         total_mb = sum(tamanho_mb(p) for p, _ in ifc_nuvem)
         log(f"  {len(ifc_nuvem)} arquivo(s) estao na nuvem ({total_mb:.0f} MB total).")
-        resp = input("  Baixar do OneDrive agora? (S/N): ").strip().lower()
+        resp = perguntar("  Baixar do OneDrive agora? (S/N): ", default="s")
         log()
         if resp == "s":
             log("  Iniciando download...")
@@ -422,7 +455,7 @@ def main():
 
     if not ifc_locais:
         log("  Nenhum arquivo disponivel para importar. Encerrando.")
-        input("\n  Pressione Enter para sair...")
+        pausar()
         return
 
     # ── Copiar IFCs para pasta local do projeto (evita usar a rede no import) ──
@@ -430,7 +463,7 @@ def main():
 
     if not ifc_locais:
         log("  Nenhum arquivo pode ser copiado para o projeto. Encerrando.")
-        input("\n  Pressione Enter para sair...")
+        pausar()
         return
 
     # ── Escrever config.json ──────────────────────────────────────────────────
@@ -447,6 +480,7 @@ def main():
             "main_level":   level,
             "content_base": content_base,
             "uproject":     projeto,
+            "lightmap_uv":  lightmap_uv,
         }, f, indent=2, ensure_ascii=False)
 
     # ── Rodar Unreal headless ─────────────────────────────────────────────────
@@ -528,7 +562,7 @@ def main():
     log()
     log(SEP)
     log()
-    resp = input("  Abrir o projeto no Unreal para conferir? (S/N): ").strip().lower()
+    resp = perguntar("  Abrir o projeto no Unreal para conferir? (S/N): ", default="n")
     if resp == "s":
         subprocess.Popen([unreal, projeto])
 
