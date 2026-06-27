@@ -136,6 +136,8 @@ def parsear_bat(bat_path):
                 elif key == "IFC_PROJETO":       config["projeto"]      = val
                 elif key == "IFC_CONTENT_BASE":  config["content_base"] = val
                 elif key == "IFC_LEVEL":         config["level"]        = val
+                elif key == "IFC_UNIR_BODIES":
+                    config["unir_bodies"] = val.strip().lower() in ("1","true","s","sim","yes","on")
                 elif key == "IFC_FILTROS":
                     config["filtros"] = [f.strip() for f in val.split(",") if f.strip()]
                 elif key.startswith("IFC_PASTA_") and val:
@@ -195,6 +197,10 @@ set IFC_UNREAL={unreal_s}
 set IFC_PROJETO={projeto_s}
 set IFC_CONTENT_BASE={config['content_base']}
 set IFC_LEVEL={config['level']}
+
+REM  Unir bodies: 1 = mescla os _bodyN de cada elemento numa malha so
+REM  (passo extra em editor completo, mais lento). 0 = nao mescla.
+set IFC_UNIR_BODIES={1 if config.get('unir_bodies') else 0}
 
 REM  Pastas onde buscar arquivos .ifc (deixe em branco para ignorar)
 {chr(10).join(linhas_pastas)}
@@ -413,6 +419,14 @@ def main():
 
     lbl_lvl_status = tk.Label(t1, text="", font=("Arial",8), fg="#888888", bg="white")
     lbl_lvl_status.grid(row=7, column=1, columnspan=2, sticky="w", padx=(0,16))
+
+    var_unir = tk.BooleanVar(value=False)
+    tk.Checkbutton(t1, text="Unir bodies de cada elemento (mescla _body1/_body2/... numa malha so)",
+                   variable=var_unir, font=("Arial",9), bg="white", anchor="w"
+                   ).grid(row=8, column=1, columnspan=2, sticky="w", padx=(0,16), pady=(10,0))
+    tk.Label(t1, text="Passo extra em editor completo apos importar — mais lento, mas deixa a cena mais leve.",
+             font=("Arial",8), fg="#888888", bg="white"
+             ).grid(row=9, column=1, columnspan=2, sticky="w", padx=(0,16))
 
     def atualizar_levels(*_):
         p = var_projeto.get().strip()
@@ -731,6 +745,8 @@ def main():
         if not cfg.get("filtros"):
             add_filtro_row()
 
+        var_unir.set(bool(cfg.get("unir_bodies", False)))
+
         # Agendamento
         if cfg.get("agenda_dia"):
             var_dia.set(cfg["agenda_dia"])
@@ -771,6 +787,7 @@ def main():
             "level":        var_level.get().strip(),
             "pastas":       pastas,
             "filtros":      [v.get().strip() for v in filtro_vars if v.get().strip()],
+            "unir_bodies":  var_unir.get(),
             "agenda_dia":   var_dia.get(),
             "agenda_hora":  var_hora.get().strip(),
         }

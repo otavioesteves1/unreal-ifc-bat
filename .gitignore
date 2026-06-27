@@ -5,3 +5,6 @@ __pycache__/
 config.json
 result.json
 progress.json
+config_merge.json
+merge_result.json
+_*.py

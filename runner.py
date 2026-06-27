@@ -19,6 +19,9 @@ HEADLESS_SCRIPT = os.path.join(SCRIPTS_DIR, "import_headless.py")
 CONFIG_PATH     = os.path.join(SCRIPTS_DIR, "config.json")
 RESULT_PATH     = os.path.join(SCRIPTS_DIR, "result.json")
 PROGRESS_PATH   = os.path.join(SCRIPTS_DIR, "progress.json")
+MERGE_SCRIPT       = os.path.join(SCRIPTS_DIR, "unir_bodies.py")
+MERGE_CONFIG_PATH  = os.path.join(SCRIPTS_DIR, "config_merge.json")
+MERGE_RESULT_PATH  = os.path.join(SCRIPTS_DIR, "merge_result.json")
 
 FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS = 0x00400000
 
@@ -320,6 +323,71 @@ def monitorar_progresso(total_esperado, parar):
     sys.stdout.flush()
 
 
+# ── Unir bodies (editor completo) ──────────────────────────────────────────────
+
+def _spinner_simples(msg, parar):
+    spin = ["|", "/", "-", "\\"]
+    i = 0
+    t0 = time.time()
+    while not parar.is_set():
+        linha = f"\r  {spin[i % 4]}  {msg}  {fmt_tempo(time.time() - t0)}"
+        sys.stdout.write(f"{linha:<79}")
+        sys.stdout.flush()
+        i += 1
+        time.sleep(0.5)
+    sys.stdout.write("\r" + " " * 79 + "\r")
+    sys.stdout.flush()
+
+
+def rodar_merge(unreal, projeto, level, content_base):
+    """Roda unir_bodies.py no EDITOR COMPLETO (o commandlet do import nao tem o
+    StaticMeshEditorSubsystem). Confere merge_result.json — NAO o exit code, pois
+    o editor headless da um crash benigno no shutdown depois de ja ter salvado."""
+    for p in (MERGE_RESULT_PATH,):
+        try:
+            if os.path.exists(p):
+                os.remove(p)
+        except Exception:
+            pass
+    try:
+        with open(MERGE_CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump({"main_level": level, "content_base": content_base},
+                      f, ensure_ascii=False)
+    except Exception as e:
+        log(f"  [!] Nao foi possivel preparar o merge: {e}")
+        return None
+
+    log("  Unindo bodies de cada elemento (editor completo)...")
+    log("  (carrega o level, mescla e salva — pode levar varios minutos)")
+    log()
+    parar = threading.Event()
+    t = threading.Thread(target=_spinner_simples,
+                         args=("Unindo bodies...", parar), daemon=True)
+    t.start()
+    subprocess.run([
+        unreal, projeto,
+        f"-ExecCmds=py {_make_script_arg(MERGE_SCRIPT)}",
+        "-unattended", "-nullrhi", "-nopause", "-nosplash", "-NoSound", "-log",
+    ])
+    parar.set()
+    t.join(timeout=2)
+
+    res = None
+    if os.path.exists(MERGE_RESULT_PATH):
+        try:
+            with open(MERGE_RESULT_PATH, "r", encoding="utf-8") as f:
+                res = json.load(f)
+            os.remove(MERGE_RESULT_PATH)
+        except Exception:
+            pass
+    try:
+        if os.path.exists(MERGE_CONFIG_PATH):
+            os.remove(MERGE_CONFIG_PATH)
+    except Exception:
+        pass
+    return res
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -340,6 +408,10 @@ def main():
     # Lightmap UV: desligado por padrao (ganho de ~2x no build; sem impacto visual
     # com iluminacao dinamica). So ligue se for ASSAR iluminacao estatica.
     lightmap_uv  = os.environ.get("IFC_LIGHTMAP_UV", "").strip().lower() in (
+                       "1", "true", "s", "sim", "yes", "on")
+    # Unir bodies: passo extra (editor completo) que mescla os _bodyN de cada
+    # elemento numa malha so. Desligado por padrao (e mais lento — carrega o level).
+    unir_bodies  = os.environ.get("IFC_UNIR_BODIES", "").strip().lower() in (
                        "1", "true", "s", "sim", "yes", "on")
 
     log(f"  Batch   : {nome}")
@@ -550,6 +622,17 @@ def main():
         if falhou > 0:
             log()
             log(f"  Log detalhado: {log_dir}")
+
+        # ── Unir bodies (passo opcional, editor completo) ─────────────────────
+        if unir_bodies and ok > 0:
+            log()
+            log(SEP)
+            res = rodar_merge(unreal, projeto, level, content_base)
+            if res is not None:
+                log(f"  Elementos unidos : {res.get('merged', 0)}/{res.get('total', 0)}"
+                    f"   ({fmt_tempo(res.get('tempo', 0))})")
+            else:
+                log("  [!] Uniao de bodies nao gerou resultado (veja o log do Unreal).")
     else:
         log()
         log("  [!] Script de import nao gerou resultado.")
