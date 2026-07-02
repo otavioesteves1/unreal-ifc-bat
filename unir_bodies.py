@@ -15,8 +15,16 @@ A geometria e materiais sao preservados (cada body vira uma secao da malha).
 """
 import unreal
 import os
+import re
 import json
 import time
+
+
+def _limpar_nome_body(nome):
+    """Remove a contagem apos 'body' no fim do nome, deixando so 'body'.
+    Ex.: '..._body1_8' -> '..._body'   '..._body22' -> '..._body'.
+    Nomes sem esse padrao (ex.: '..._H6-22312-001') ficam intactos."""
+    return re.sub(r'(_body)\d+(?:_\d+)*$', r'\1', nome, flags=re.IGNORECASE)
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(SCRIPTS_DIR, "config_merge.json")
@@ -74,16 +82,22 @@ def unir_bodies(main_level="", content_base="/Game/IFC"):
     ok = 0
     t0 = time.time()
     for i, (parent, smk) in enumerate(grupos, start=1):
+        # nome do elemento sem a contagem de body (ex.: _body1_8 -> _body)
+        label = _limpar_nome_body(parent.get_actor_label())
         try:
             opts = unreal.MergeStaticMeshActorsOptions()
             opts.set_editor_property("base_package_name", f"{merge_dir}/E_{i:06d}")
             opts.set_editor_property("destroy_source_actors", True)
             opts.set_editor_property("spawn_merged_actor", True)
-            opts.set_editor_property("new_actor_label", parent.get_actor_label())
+            opts.set_editor_property("new_actor_label", label)
             merged = sm_sub.merge_static_mesh_actors(smk, opts)
             if merged is not None:
                 ok += 1
-                # mantem o merged na mesma posicao da hierarquia (sob o ator-pai)
+                # garante o rotulo limpo (sem _bodyN) e mantem sob o ator-pai
+                try:
+                    merged.set_actor_label(label)
+                except Exception:
+                    pass
                 try:
                     merged.attach_to_actor(
                         parent, "",
