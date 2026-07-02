@@ -332,8 +332,8 @@ def main():
                     f"Tarefa agendada:\n  {task}\n"
                     f"  {cfg['agenda_dia']} as {cfg['agenda_hora']}", parent=root)
             else:
-                extra = ("\n\nDica: feche e abra com 'Gerador-Admin.bat' (duplo-clique) "
-                         "para rodar como Administrador e poder agendar.") if not is_admin() else ""
+                extra = ("\n\nDica: para agendar, rode o gerador a partir de um "
+                         "PowerShell/Prompt aberto como Administrador.") if not is_admin() else ""
                 messagebox.showwarning("Batch gerado — Agendamento falhou",
                     f"Batch: {bat}\n\nErro:\n{msg}{extra}", parent=root)
         else:
@@ -675,8 +675,8 @@ def main():
         st_cor = COR_OK
     else:
         st_txt = ("NAO esta como Administrador. O agendamento vai falhar.\n"
-                  "Para agendar: feche e abra com 'Gerador-Admin.bat' (duplo-clique)\n"
-                  "ou clique-direito no gerador > Executar como administrador.")
+                  "Para agendar: abra o PowerShell/Prompt como Administrador\n"
+                  "e rode  py gerador.py  a partir desta pasta.")
         st_cor = COR_ERR
     tk.Label(t4, text=st_txt, font=("Arial",9,"bold"), fg=st_cor, bg="white",
              justify="left").pack(anchor="w", padx=20, pady=(4,0))

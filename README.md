@@ -60,7 +60,6 @@ A pasta contém:
 | `runner.py` | Chamado pelo `.bat`; varre os IFCs, copia para o projeto e inicia o Unreal |
 | `import_headless.py` | Roda dentro do Unreal e importa via Datasmith |
 | `unir_bodies.py` | (opcional) Une os *bodies* de cada elemento numa malha só |
-| `Gerador-Admin.bat` | Abre o gerador como Administrador (necessário só para agendar) |
 
 ---
 
@@ -112,9 +111,13 @@ Rode o `.bat` gerado (em `projetos/`). Ele:
 
 ## 5. Rodar como Administrador (só para agendar)
 
-O agendamento usa o `schtasks` do Windows, que exige Administrador. Basta dar **duplo-clique em `Gerador-Admin.bat`** e aceitar o aviso (UAC) — o gerador abre já elevado. O título da janela mostra `[Administrador]` e a aba Agendamento indica o status.
+O agendamento usa o `schtasks` do Windows, que exige Administrador. Para agendar, abra o **PowerShell** (ou **Prompt de Comando**) **como Administrador**, entre na pasta dos scripts e rode:
 
-O import em si **não** precisa de Administrador — só o registro da tarefa agendada.
+```
+py gerador.py
+```
+
+O título da janela mostra `[Administrador]` e a aba Agendamento indica o status. O import em si **não** precisa de Administrador — só o registro da tarefa agendada.
 
 ---
 
@@ -153,7 +156,7 @@ Abra o log em `<projeto>\Saved\Logs\` e procure por `[IFC]` para ver o erro de c
 Rode com o PC ocioso (o build das malhas é pesado), mantenha o **projeto fora do OneDrive** e deixe o `IFC_LIGHTMAP_UV` desligado.
 
 **Agendamento falhou**
-Abra com o `Gerador-Admin.bat` (Administrador) para o Task Scheduler aceitar o registro.
+Rode o `gerador.py` a partir de um PowerShell/Prompt aberto como Administrador para o Task Scheduler aceitar o registro.
 
 **Arquivos em nuvem não baixam**
 O OneDrive precisa estar rodando e conectado no momento da execução.
