@@ -40,7 +40,7 @@ Abra o projeto no Unreal Editor, vá em **Edit → Plugins**, ative os plugins a
 | **Datasmith Importer** | Importers | importação Datasmith |
 | **Datasmith CAD Importer** | Importers | leitura de arquivos IFC |
 
-> ⚠️ Se o import falhar com `module 'unreal' has no attribute 'DatasmithSceneElement'`, é sinal de que os plugins Datasmith não carregaram — confira se estão ativos e reinicie o editor.
+> Se o import falhar com `module 'unreal' has no attribute 'DatasmithSceneElement'`, é sinal de que os plugins Datasmith não carregaram — confira se estão ativos e reinicie o editor.
 
 ---
 
@@ -77,7 +77,7 @@ py gerador.py
 | **Arquivo .uproject** | Caminho do `.uproject` do seu projeto |
 | **Content base** | Pasta no Content onde os IFCs entram (ex: `/Game/IFC`) |
 | **Level principal** | Level aberto durante o import |
-| ☑ **Unir bodies** | (opcional) Mescla `_body1`, `_body2`... de cada elemento numa malha só. Passo extra em editor completo — mais lento, porém deixa a cena mais leve. |
+| **Unir bodies** | (opcional) Mescla `_body1`, `_body2`... de cada elemento numa malha só. Passo extra em editor completo — mais lento, porém deixa a cena mais leve. |
 
 ### Aba — Pastas IFC
 Adicione as pastas onde estão os `.ifc`. Cada pasta é varrida **apenas na raiz** (sem subpastas). A lista mostra, por pasta, os arquivos que serão importados.
@@ -90,7 +90,7 @@ Marque para registrar uma tarefa no **Windows Task Scheduler** que roda o `.bat`
 
 Clique em **Gerar .bat** — o arquivo vai para `projetos/<nome>.bat`.
 
-> 💡 O botão **Carregar .bat existente** reabre um `.bat` já gerado para edição.
+> O botão **Carregar .bat existente** reabre um `.bat` já gerado para edição.
 
 ---
 
@@ -105,7 +105,7 @@ Rode o `.bat` gerado (em `projetos/`). Ele:
 5. Se **Unir bodies** estiver ligado, roda o passo de merge (seção 6);
 6. Mostra o progresso em tempo real e o tempo decorrido.
 
-> ⚡ **Desempenho:** a geração de *lightmap UV* fica desligada por padrão (build ~2× mais rápido, sem impacto visual com iluminação dinâmica). O tempo depende principalmente do **build das malhas** — importar com o PC ocioso é bem mais rápido. Mantenha o **projeto fora do OneDrive** para não sofrer com a sincronização de milhares de assets.
+> **Desempenho:** a geração de *lightmap UV* fica desligada por padrão (build ~2× mais rápido, sem impacto visual com iluminação dinâmica). O tempo depende principalmente do **build das malhas** — importar com o PC ocioso é bem mais rápido. Mantenha o **projeto fora do OneDrive** para não sofrer com a sincronização de milhares de assets.
 
 ---
 
